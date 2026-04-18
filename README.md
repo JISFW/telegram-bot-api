@@ -16,6 +16,7 @@ This repository packages [tdlib/telegram-bot-api](https://github.com/tdlib/teleg
 - A version tag is created only when upstream first introduces a new Bot API version in `telegram-bot-api/CMakeLists.txt`.
 - Only tag pushes publish container images.
 - Image tags match the Bot API version, for example `9.6`.
+- Release images are published as a multi-arch manifest for `linux/amd64` and `linux/arm64`.
 
 ## Local Setup
 
