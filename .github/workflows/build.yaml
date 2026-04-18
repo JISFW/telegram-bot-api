@@ -1,0 +1,46 @@
+name: Docker build and push
+
+on:
+  push:
+    tags:
+      - v*
+env:
+  IMAGE_NAME: telegram-bot-api
+
+jobs:
+  build:
+    name: Build release image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Log in to registry
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }}
+          --password-stdin
+
+      - name: Derive release version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+          IMAGE_ID=$(echo "$IMAGE_ID" | tr '[:upper:]' '[:lower:]')
+          docker build . \
+            --file Dockerfile \
+            --tag "$IMAGE_ID:$VERSION" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.version=$VERSION"
+
+      - name: Push image
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+          IMAGE_ID=$(echo "$IMAGE_ID" | tr '[:upper:]' '[:lower:]')
+          docker push "$IMAGE_ID:$VERSION"

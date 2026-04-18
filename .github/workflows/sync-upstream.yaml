@@ -1,0 +1,109 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream head
+        run: |
+          set -euo pipefail
+          git -C telegram-bot-api fetch origin master
+          echo "OLD_SHA=$(git -C telegram-bot-api rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "NEW_SHA=$(git -C telegram-bot-api rev-parse origin/master)" >> "$GITHUB_ENV"
+
+      - name: Plan sync
+        id: plan
+        run: |
+          set -euo pipefail
+          bash scripts/plan_upstream_sync.sh \
+            --repo-path telegram-bot-api \
+            --old-sha "$OLD_SHA" \
+            --new-sha "$NEW_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Stop when upstream is unchanged
+        if: steps.plan.outputs.status == 'noop'
+        run: echo "Upstream is already current."
+
+      - name: Configure push remote
+        if: steps.plan.outputs.status != 'noop'
+        env:
+          TELEGRAM_UPDATER_TOKEN: ${{ secrets.TELEGRAM_UPDATER_TOKEN }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${TELEGRAM_UPDATER_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      - name: Create linear sync commits and optional tag
+        if: steps.plan.outputs.status != 'noop'
+        env:
+          PLAN_STATUS: ${{ steps.plan.outputs.status }}
+          PLAN_NEW_SHA: ${{ steps.plan.outputs.new_sha }}
+          PLAN_RELEASE_SHA: ${{ steps.plan.outputs.release_sha }}
+          PLAN_RELEASE_VERSION: ${{ steps.plan.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          sync_to_sha() {
+            local target_sha="$1"
+            local message="$2"
+
+            git -C telegram-bot-api checkout "$target_sha"
+            git add telegram-bot-api
+            git commit -m "$message"
+          }
+
+          if [[ "$PLAN_STATUS" == "advance" ]]; then
+            short_sha="$(git -C telegram-bot-api rev-parse --short "$PLAN_NEW_SHA")"
+            sync_to_sha "$PLAN_NEW_SHA" "chore: sync upstream to ${short_sha}"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v${PLAN_RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${PLAN_RELEASE_VERSION} already exists on origin." >&2
+            exit 1
+          fi
+
+          release_short_sha="$(git -C telegram-bot-api rev-parse --short "$PLAN_RELEASE_SHA")"
+          sync_to_sha "$PLAN_RELEASE_SHA" "chore: release upstream ${PLAN_RELEASE_VERSION} (${release_short_sha})"
+          git tag -a "v${PLAN_RELEASE_VERSION}" -m "Release ${PLAN_RELEASE_VERSION}"
+
+          if [[ "$PLAN_RELEASE_SHA" != "$PLAN_NEW_SHA" ]]; then
+            head_short_sha="$(git -C telegram-bot-api rev-parse --short "$PLAN_NEW_SHA")"
+            sync_to_sha "$PLAN_NEW_SHA" "chore: sync upstream to ${head_short_sha}"
+          fi
+
+      - name: Push branch and optional tag
+        if: steps.plan.outputs.status != 'noop'
+        env:
+          PLAN_STATUS: ${{ steps.plan.outputs.status }}
+          PLAN_RELEASE_VERSION: ${{ steps.plan.outputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          git push origin HEAD:master
+          if [[ "$PLAN_STATUS" == "release" ]]; then
+            git push origin "refs/tags/v${PLAN_RELEASE_VERSION}"
+          fi
