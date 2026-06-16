@@ -24,6 +24,10 @@ This repository packages [tdlib/telegram-bot-api](https://github.com/tdlib/teleg
 git submodule update --init --recursive
 ```
 
+## Kubernetes
+
+A reusable Helm chart lives in [`charts/telegram-bot-api/`](charts/telegram-bot-api/) and supports either chart-created Secrets or references to existing Secrets for Telegram API credentials and Traefik basic auth.
+
 ## Sync Logic
 
 The scheduled workflow fetches upstream `master`, identifies the newest commit in the updated range that changes `project(TelegramBotApi VERSION X.Y ...)`, then:

@@ -1,0 +1,46 @@
+{{- if .Values.ingress.enabled }}
+{{- $annotations := dict -}}
+{{- if and .Values.basicAuth.enabled .Values.traefik.middleware.enabled -}}
+{{- $_ := set $annotations "traefik.ingress.kubernetes.io/router.middlewares" (include "telegram-bot-api.traefikMiddlewareReference" .) -}}
+{{- $_ := set $annotations "ingress.kubernetes.io/auth-type" "basic" -}}
+{{- $_ := set $annotations "ingress.kubernetes.io/auth-secret" (include "telegram-bot-api.basicAuthSecretName" .) -}}
+{{- $_ := set $annotations "ingress.kubernetes.io/auth-remove-header" (toString .Values.basicAuth.removeHeader) -}}
+{{- end -}}
+{{- with .Values.ingress.annotations -}}
+{{- $annotations = mergeOverwrite $annotations . -}}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "telegram-bot-api.fullname" . }}
+  labels:
+    {{- include "telegram-bot-api.labels" . | nindent 4 }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- $paths := .paths | default (list (dict "path" "/" "pathType" "ImplementationSpecific")) }}
+          {{- range $paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "telegram-bot-api.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.ports.http }}
+          {{- end }}
+    {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

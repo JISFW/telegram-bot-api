@@ -1,0 +1,12 @@
+{{- if and .Values.basicAuth.enabled .Values.traefik.middleware.enabled }}
+apiVersion: {{ .Values.traefik.middleware.apiVersion }}
+kind: Middleware
+metadata:
+  name: {{ include "telegram-bot-api.traefikMiddlewareName" . }}
+  labels:
+    {{- include "telegram-bot-api.labels" . | nindent 4 }}
+spec:
+  basicAuth:
+    removeHeader: {{ .Values.basicAuth.removeHeader }}
+    secret: {{ include "telegram-bot-api.basicAuthSecretName" . }}
+{{- end }}
