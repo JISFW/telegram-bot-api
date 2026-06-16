@@ -49,7 +49,9 @@ jobs:
           file: Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: true
-          tags: ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+          tags: |
+            ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            ${{ env.IMAGE_ID }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
